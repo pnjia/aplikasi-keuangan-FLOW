@@ -1,7 +1,12 @@
 /* ============================================================
    FLOW — Aplikasi Keuangan UMKM (Frontend Prototype)
    Standalone tanpa backend. Data disimpan di localStorage.
+   CATATAN: Kata sandi disimpan dalam teks biasa (plain text)
+   karena ini hanya prototipe. Implementasi nyata WAJIB
+   menggunakan hashing (Bcrypt) di sisi server.
    ============================================================ */
+
+var BALANCE_TOLERANCE = 0.01; // toleransi pembulatan untuk perbandingan debit/kredit
 
 // ==================== UTILITIES ====================
 function uuid() {
@@ -462,8 +467,8 @@ Router.register('/dashboard', function () {
     if (inv.status === 'PAID') totalPaid += Number(inv.total_amount || 0);
   });
 
-  // Calculate cash from journal lines
-  var cashAccountIds = accounts.filter(function (a) { return a.account_type === 'ASSET' && (a.account_code === '1001' || a.account_code === '1002'); }).map(function (a) { return a.id; });
+  // Calculate cash from journal lines (akun kas/bank = anak dari akun "1000" atau kode dimulai "100")
+  var cashAccountIds = accounts.filter(function (a) { return a.account_type === 'ASSET' && a.account_code.indexOf('100') === 0 && a.account_code !== '1100'; }).map(function (a) { return a.id; });
   var journalLines = Store.get('journal_lines');
   var cashBalance = 0;
   journalLines.forEach(function (jl) {
@@ -747,10 +752,11 @@ Router.register('/invoices/new', function () {
       '</div>' +
     '</div>'
   );
+  invoiceItemCount = 0;
   addInvoiceItem();
 });
 
-var invoiceItemCount = 0;
+var invoiceItemCount = 0; // di-reset di route /invoices/new
 function addInvoiceItem() {
   invoiceItemCount++;
   var idx = invoiceItemCount;
@@ -1077,10 +1083,11 @@ function showManualJournalModal() {
         '<div class="modal-footer"><button class="btn btn-outline" onclick="closeJournalModal()">Batal</button><button class="btn btn-primary" onclick="saveManualJournal()">Simpan Jurnal</button></div>' +
       '</div>' +
     '</div>';
+  mjLineCount = 0;
   addJournalLine();
   addJournalLine();
 }
-var mjLineCount = 0;
+var mjLineCount = 0; // di-reset di showManualJournalModal
 function addJournalLine() {
   mjLineCount++;
   var idx = mjLineCount;
@@ -1131,7 +1138,7 @@ function saveManualJournal() {
     }
   });
   if (lines.length < 2) { showToast('Minimal 2 baris jurnal', 'error'); return; }
-  if (Math.abs(totalD - totalC) > 0.01) { showToast('Total Debit dan Kredit harus seimbang! (Debit: ' + formatRupiah(totalD) + ', Kredit: ' + formatRupiah(totalC) + ')', 'error'); return; }
+  if (Math.abs(totalD - totalC) > BALANCE_TOLERANCE) { showToast('Total Debit dan Kredit harus seimbang! (Debit: ' + formatRupiah(totalD) + ', Kredit: ' + formatRupiah(totalC) + ')', 'error'); return; }
 
   var cid = Session.companyId();
   var uid = Session.get().user_id;
@@ -1225,7 +1232,7 @@ function renderTrialBalance() {
     rows +
     '<tr class="total-row"><td colspan="2">TOTAL</td><td class="text-right font-mono">' + formatRupiah(totalD) + '</td><td class="text-right font-mono">' + formatRupiah(totalC) + '</td></tr>' +
     '</tbody></table></div>' +
-    (Math.abs(totalD - totalC) < 0.01 ? '<div class="alert alert-success mt-1">✅ Seimbang! Total Debit = Total Kredit</div>' : '<div class="alert alert-danger mt-1">⚠️ Tidak seimbang! Selisih: ' + formatRupiah(Math.abs(totalD - totalC)) + '</div>');
+    (Math.abs(totalD - totalC) < BALANCE_TOLERANCE ? '<div class="alert alert-success mt-1">✅ Seimbang! Total Debit = Total Kredit</div>' : '<div class="alert alert-danger mt-1">⚠️ Tidak seimbang! Selisih: ' + formatRupiah(Math.abs(totalD - totalC)) + '</div>');
 }
 
 function renderProfitLoss() {
@@ -1327,7 +1334,7 @@ function renderBalanceSheet() {
 function renderCashFlow() {
   var cid = Session.companyId();
   var accounts = Store.where('accounts', { company_id: cid });
-  var cashAccounts = accounts.filter(function (a) { return a.account_type === 'ASSET' && (a.account_code.indexOf('100') === 0); });
+  var cashAccounts = accounts.filter(function (a) { return a.account_type === 'ASSET' && a.account_code.indexOf('100') === 0 && a.account_code !== '1100'; });
 
   var entries = Store.where('journal_entries', { company_id: cid });
   var startEl = document.getElementById('rpt-start');
